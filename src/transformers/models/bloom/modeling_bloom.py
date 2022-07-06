@@ -139,12 +139,17 @@ def pre_process_alibi_for_pad(alibi: torch.Tensor, attention_mask: torch.Tensor)
         attention_mask: ([`torch.tensor`], *required*):
             attention mask to pre-process
     """
-
     attention_mask = attention_mask.to(alibi.device)
-    unpadded_indices = torch.relu(attention_mask.cumsum(dim=1) - 1)
+    unpadded_indices = torch.relu((attention_mask.cumsum(dim=1).float() - 1)).long()
     # ^-- [batch, max_len], values correspond to element indices after removing padding
     # We shift the alibi tensor + replace all the values where attention_mask==0.0 by 0
-    alibi = alibi.take_along_dim(unpadded_indices.unsqueeze(0), -1) * attention_mask.unsqueeze(0) # [num_heads, batch_size, max_len]
+    # the following is equivalent to: alibi = alibi.take_along_dim(unpadded_indices.unsqueeze(0), -1) * attention_mask.unsqueeze(0)
+    unpadded_indices = unpadded_indices.view(1, 1, -1) # [1, 1, batch_size * max_len]
+    # we repeat because gather doesn't broadcast like take_along_dim
+    unpadded_indices = unpadded_indices.repeat(alibi.shape[0], 1, 1) # [num_heads, 1, batch_size * max_len]
+    alibi = alibi.gather(-1, unpadded_indices) # [num_heads, 1, batch_size * max_len]
+    alibi = alibi.view(-1, attention_mask.shape[0], attention_mask.shape[1]) * attention_mask.unsqueeze(0) # [num_heads, batch_size, max_len]
+    
     alibi = alibi.transpose(0, 1) # [batch_size, num_heads, max_len]
     return alibi.reshape(alibi.shape[0] * alibi.shape[1], 1, -1)
 
