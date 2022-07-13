@@ -399,9 +399,9 @@ class BloomBlock(nn.Module):
         layer_number,
         layer_past=None,
         attention_mask=None,
-        head_mask=None,
-        use_cache=False,
         alibi=None,
+        use_cache=False,
+        head_mask=None,
         output_attentions=False,
     ):
         # hidden_states: [batch_size, seq_length, hidden_size]
@@ -696,8 +696,8 @@ class BloomModel(BloomPreTrainedModel):
             model = block
             output = Path("./tmp/bloom_block.onnx")
             output.parent.mkdir(parents=True, exist_ok=True)
-            model_inputs = (hidden_states, 5, layer_past, causal_mask, head_mask[i], use_cache, alibi)
-            input_names = ["hidden_states", "layer_number", "layer_past", "attention_mask", "head_mask", "use_cache", "alibi"]
+            model_inputs = (hidden_states, 5, layer_past, causal_mask, alibi, torch.tensor(use_cache))
+            input_names = ["hidden_states", "layer_number", "layer_past", "attention_mask", "alibi", "use_cache"]
             onnx_outputs = ["outputs"] # ["hidden_states", "present", "attentions"]
             dynamic_axes = {
                 "hidden_states": {0: "batch_size", 1: "seq_len"},
@@ -713,7 +713,7 @@ class BloomModel(BloomPreTrainedModel):
                 output_names=onnx_outputs,
                 dynamic_axes=dynamic_axes,
                 do_constant_folding=False, # removes None inputs from the graph
-                opset_version=13,
+                opset_version=14,
             )
 
             outputs = block( # TODO: replace this with inference session
