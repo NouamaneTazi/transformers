@@ -265,6 +265,7 @@ class BloomAttention(nn.Module):
         self,
         hidden_states,
         residual,
+        layer_number,
         layer_past=None,
         attention_mask=None,
         alibi=None,
@@ -289,10 +290,12 @@ class BloomAttention(nn.Module):
         else:
             present = None
 
+        layer_number = max(1, layer_number)
         beta = 1.0 / self.layer_number
+        norm_factor = math.sqrt(self.head_dim) * layer_number
 
         # # [batch_size*num_heads, head_dim, q_length] x [batch_size*num_heads, head_dim, k_length] -> [batch_size*num_heads, q_length, k_length]
-        matmul_result = (1.0 / self.norm_factor) * torch.bmm(
+        matmul_result = (1.0 / norm_factor) * torch.bmm(
             query_layer.transpose(1, 2).reshape(-1, query_layer.shape[1], query_layer.shape[3]),
             key_layer.permute(0, 2, 3, 1).reshape(-1, key_layer.shape[3], key_layer.shape[1]),
         ) + beta * alibi
@@ -393,6 +396,7 @@ class BloomBlock(nn.Module):
     def forward(
         self,
         hidden_states,
+        layer_number,
         layer_past=None,
         attention_mask=None,
         head_mask=None,
@@ -415,6 +419,7 @@ class BloomBlock(nn.Module):
         attn_outputs = self.self_attention(
             layernorm_output,
             residual,
+            layer_number,
             layer_past=layer_past,
             attention_mask=attention_mask,
             alibi=alibi,
@@ -683,38 +688,51 @@ class BloomModel(BloomPreTrainedModel):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
-            if self.gradient_checkpointing and self.training:
+            if layer_past is None:
+                # generate empty 2 * [batch_size, qk_length, num_heads, head_dim]
+                layer_past = torch.empty(2, hidden_states.shape[0], 0, self.config.n_head, self.config.hidden_size // self.config.n_head, device=hidden_states.device)
+            from pathlib import Path
+            from torch.onnx import export as onnx_export
+            model = block
+            output = Path("./tmp/bloom_block_3.onnx")
+            output.parent.mkdir(parents=True, exist_ok=True)
+            model_inputs = (hidden_states, 5, {
+                "layer_past": layer_past,
+                "attention_mask": causal_mask,
+                "head_mask": head_mask[i],
+                "use_cache": use_cache,
+                "output_attentions": output_attentions,
+                "alibi": alibi,
+            })
+            input_names = ["hidden_states", "layer_number", "layer_past", "attention_mask", "head_mask", "use_cache", "output_attentions", "alibi"]
+            onnx_outputs = ["outputs"] # ["hidden_states", "present", "attentions"]
+            dynamic_axes = {
+                "hidden_states": {0: "batch_size", 1: "seq_len"},
+                "layer_past": {0: "batch_size", 1: "seq_len"},
+                "attention_mask" : {0: "batch_size"},
+                "alibi": {0: "batch_size * self.n_head"},
+            }
+            onnx_export(
+                model,
+                model_inputs,
+                f=output.as_posix(),
+                input_names=input_names,
+                output_names=onnx_outputs,
+                dynamic_axes=dynamic_axes,
+                do_constant_folding=False, # removes None inputs from the graph
+                opset_version=13,
+            )
 
-                if use_cache:
-                    logger.warning(
-                        "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-                    )
-                    use_cache = False
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        # None for past_key_value
-                        return module(*inputs, use_cache, output_attentions, alibi)
-
-                    return custom_forward
-
-                outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    hidden_states,
-                    None,
-                    causal_mask,
-                    head_mask[i],
-                )
-            else:
-                outputs = block(
-                    hidden_states,
-                    layer_past=layer_past,
-                    attention_mask=causal_mask,
-                    head_mask=head_mask[i],
-                    use_cache=use_cache,
-                    output_attentions=output_attentions,
-                    alibi=alibi,
-                )
+            outputs = block( # TODO: replace this with inference session
+                hidden_states,
+                i,
+                layer_past=layer_past,
+                attention_mask=causal_mask,
+                head_mask=head_mask[i],
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                alibi=alibi,
+            )
 
             hidden_states = outputs[0]
             if use_cache is True:
