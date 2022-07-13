@@ -574,7 +574,10 @@ class BloomModel(BloomPreTrainedModel):
         self.word_embeddings_layernorm = LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
 
         # Transformer blocks
-        self.h = nn.ModuleList([BloomBlock(config, layer_number=i) for i in range(config.num_hidden_layers)])
+        import onnxruntime
+
+        onnx_model_path = "/home/nouamane/projects/transformers/tmp/bloom_block.onnx"
+        self.h = [onnxruntime.InferenceSession(onnx_model_path, providers=["CPUExecutionProvider"]) for i in range(config.num_hidden_layers)]
 
         # Final Layer Norm
         self.ln_f = LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
@@ -635,6 +638,9 @@ class BloomModel(BloomPreTrainedModel):
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        # ONNX
+        use_cache = False
+
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
         elif input_ids is not None:
@@ -681,11 +687,45 @@ class BloomModel(BloomPreTrainedModel):
 
         causal_mask = self._prepare_attn_mask(attention_mask, input_shape, inputs_embeds, past_key_values_length)
 
-        for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
+        ##### ONNX WITH IO BINDING #####
+
+        from onnxruntime.transformers.io_binding_helper import IOBindingHelper
+        import numpy
+
+        def get_output_buffers(output_shapes, device, is_float16=False):
+            """Returns a dictionary of output name as key, and 1D tensor as value. The tensor has enough space for given shape."""
+            data_type = torch.float16 if is_float16 else torch.float32
+
+            output_buffers = {}
+            for name, shape in output_shapes.items():
+                output_buffers[name] = torch.empty(numpy.prod(shape), dtype=data_type, device=device)
+            return output_buffers
+
+        def inference_with_io_binding(session, config, input_ids, position_ids, attention_mask, past, device):
+            output_shapes = {
+                "outputs": [
+                    input_ids.shape[0],
+                    input_ids.shape[1],
+                    config.hidden_size,
+                ]
+            }
+            output_buffers = get_output_buffers(output_shapes, device)
+
+            io_binding = IOBindingHelper.prepare_io_binding(
+                session, input_ids, position_ids, attention_mask, past, output_buffers, output_shapes
+            )
+            session.run_with_iobinding(io_binding)
+
+            outputs = IOBindingHelper.get_outputs_from_io_binding_buffer(
+                session, output_buffers, output_shapes, return_numpy=False
+            )
+            return outputs
+
+        for i, (session, layer_past) in enumerate(zip(self.h, past_key_values)):
 
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
-
+                
             if layer_past is None:
                 # generate empty 2 * [batch_size, qk_length, num_heads, head_dim]
                 layer_past = torch.empty(
@@ -696,42 +736,16 @@ class BloomModel(BloomPreTrainedModel):
                     self.config.hidden_size // self.config.n_head,
                     device=hidden_states.device,
                 )
-            from pathlib import Path
-            from torch.onnx import export as onnx_export
-
-            model = block
-            output = Path("./tmp/bloom_block.onnx")
-            output.parent.mkdir(parents=True, exist_ok=True)
-            model_inputs = (hidden_states, 5, layer_past, causal_mask, alibi, torch.tensor(use_cache))
-            input_names = ["hidden_states", "layer_number", "layer_past", "attention_mask", "alibi", "use_cache"]
-            onnx_outputs = ["outputs"]  # ["hidden_states", "present", "attentions"]
-            dynamic_axes = {
-                "hidden_states": {0: "batch_size", 1: "seq_len"},
-                "layer_past": {0: "batch_size", 1: "seq_len"},
-                "attention_mask": {0: "batch_size"},
-                "alibi": {0: "batch_size * self.n_head"},
+            ort_inputs = {
+                "hidden_states": numpy.ascontiguousarray(hidden_states.cpu().numpy()),
+                "layer_number": numpy.ascontiguousarray(i, dtype=numpy.int64),
+                "layer_past": numpy.ascontiguousarray(layer_past.cpu().numpy()),
+                "attention_mask": numpy.ascontiguousarray(causal_mask.cpu().numpy()).astype(numpy.float32),
+                "alibi": numpy.ascontiguousarray(alibi.cpu().numpy()),
             }
-            onnx_export(
-                model,
-                model_inputs,
-                f=output.as_posix(),
-                input_names=input_names,
-                output_names=onnx_outputs,
-                dynamic_axes=dynamic_axes,
-                do_constant_folding=False,  # removes None inputs from the graph
-                opset_version=14,
-            )
+            outputs = session.run(None, ort_inputs)
 
-            outputs = block(  # TODO: replace this with inference session
-                hidden_states,
-                i,
-                layer_past=layer_past,
-                attention_mask=causal_mask,
-                head_mask=head_mask[i],
-                use_cache=use_cache,
-                output_attentions=False,
-                alibi=alibi,
-            )
+            # outputs = inference_with_io_binding(session, self.config, input_ids, position_ids, attention_mask) # TODO:
 
             hidden_states = outputs[0]
             if use_cache is True:
