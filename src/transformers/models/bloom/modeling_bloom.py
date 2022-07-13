@@ -401,8 +401,8 @@ class BloomBlock(nn.Module):
         attention_mask=None,
         head_mask=None,
         use_cache=False,
-        output_attentions=False,
         alibi=None,
+        output_attentions=False,
     ):
         # hidden_states: [batch_size, seq_length, hidden_size]
 
@@ -694,17 +694,10 @@ class BloomModel(BloomPreTrainedModel):
             from pathlib import Path
             from torch.onnx import export as onnx_export
             model = block
-            output = Path("./tmp/bloom_block_3.onnx")
+            output = Path("./tmp/bloom_block.onnx")
             output.parent.mkdir(parents=True, exist_ok=True)
-            model_inputs = (hidden_states, 5, {
-                "layer_past": layer_past,
-                "attention_mask": causal_mask,
-                "head_mask": head_mask[i],
-                "use_cache": use_cache,
-                "output_attentions": output_attentions,
-                "alibi": alibi,
-            })
-            input_names = ["hidden_states", "layer_number", "layer_past", "attention_mask", "head_mask", "use_cache", "output_attentions", "alibi"]
+            model_inputs = (hidden_states, 5, layer_past, causal_mask, head_mask[i], use_cache, alibi)
+            input_names = ["hidden_states", "layer_number", "layer_past", "attention_mask", "head_mask", "use_cache", "alibi"]
             onnx_outputs = ["outputs"] # ["hidden_states", "present", "attentions"]
             dynamic_axes = {
                 "hidden_states": {0: "batch_size", 1: "seq_len"},
@@ -730,7 +723,7 @@ class BloomModel(BloomPreTrainedModel):
                 attention_mask=causal_mask,
                 head_mask=head_mask[i],
                 use_cache=use_cache,
-                output_attentions=output_attentions,
+                output_attentions=False,
                 alibi=alibi,
             )
 
@@ -758,7 +751,6 @@ class BloomModel(BloomPreTrainedModel):
             hidden_states=all_hidden_states,
             attentions=all_self_attentions,
         )
-
 
 @add_start_docstrings(
     """
