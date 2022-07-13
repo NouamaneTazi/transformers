@@ -708,7 +708,7 @@ class BloomModel(BloomPreTrainedModel):
                 "hidden_states": {0: "batch_size", 1: "seq_len"},
                 "layer_past": {0: "batch_size", 1: "seq_len"},
                 "attention_mask": {0: "batch_size", 2: "seq_len", 3: "max_seq_len"},
-                "alibi": {0: "batch_size * n_head"},
+                "alibi": {0: "batch_size * n_head", 2: "max_seq_len"},
             }
             onnx_export(
                 model,
@@ -721,7 +721,7 @@ class BloomModel(BloomPreTrainedModel):
                 opset_version=14,
             )
 
-            outputs = block(  # TODO: replace this with inference session
+            outputs = block(
                 hidden_states,
                 i,
                 layer_past=layer_past,
@@ -758,7 +758,7 @@ class BloomModel(BloomPreTrainedModel):
         )
 
 
-@add_start_docstrings(
+@add_start_docstrings( 
     """
     The Bloom Model transformer with a language modeling head on top (linear layer with weights tied to the input
     embeddings).
