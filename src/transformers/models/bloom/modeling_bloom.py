@@ -577,7 +577,21 @@ class BloomModel(BloomPreTrainedModel):
         import onnxruntime
 
         onnx_model_path = "/home/nouamane/projects/transformers/tmp/bloom_block.onnx"
-        self.h = [onnxruntime.InferenceSession(onnx_model_path, providers=["CPUExecutionProvider"]) for i in range(config.num_hidden_layers)]
+        self.h = [
+            onnxruntime.InferenceSession(
+                onnx_model_path,
+                providers=[
+                    (
+                        "CUDAExecutionProvider",
+                        {
+                            "device_id": 0,
+                        },
+                    ),
+                    # "CPUExecutionProvider",
+                ],
+            )
+            for i in range(config.num_hidden_layers)
+        ]
 
         # Final Layer Norm
         self.ln_f = LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
@@ -725,7 +739,6 @@ class BloomModel(BloomPreTrainedModel):
 
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
-                
             if layer_past is None:
                 # generate empty 2 * [batch_size, qk_length, num_heads, head_dim]
                 layer_past = torch.empty(
@@ -738,7 +751,7 @@ class BloomModel(BloomPreTrainedModel):
                 )
             ort_inputs = {
                 "hidden_states": numpy.ascontiguousarray(hidden_states.cpu().numpy()),
-                "layer_number": numpy.ascontiguousarray(i, dtype=numpy.int64),
+                "layer_number": numpy.ascontiguousarray(max(1,i), dtype=numpy.int64), #TODO: fix maximum in ONNX graph
                 "layer_past": numpy.ascontiguousarray(layer_past.cpu().numpy()),
                 "attention_mask": numpy.ascontiguousarray(causal_mask.cpu().numpy()).astype(numpy.float32),
                 "alibi": numpy.ascontiguousarray(alibi.cpu().numpy()),
