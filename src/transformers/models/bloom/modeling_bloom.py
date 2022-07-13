@@ -707,8 +707,8 @@ class BloomModel(BloomPreTrainedModel):
             dynamic_axes = {
                 "hidden_states": {0: "batch_size", 1: "seq_len"},
                 "layer_past": {0: "batch_size", 1: "seq_len"},
-                "attention_mask": {0: "batch_size"},
-                "alibi": {0: "batch_size * self.n_head"},
+                "attention_mask": {0: "batch_size", 2: "seq_len", 3: "max_seq_len"},
+                "alibi": {0: "batch_size * n_head"},
             }
             onnx_export(
                 model,
