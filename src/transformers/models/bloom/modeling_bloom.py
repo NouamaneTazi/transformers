@@ -574,8 +574,9 @@ class BloomModel(BloomPreTrainedModel):
         self.word_embeddings_layernorm = LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
 
         # Transformer blocks
+        import logging
+        logging.basicConfig(level=logging.DEBUG)
         import onnxruntime
-
         onnx_model_path = "/home/nouamane/projects/transformers/tmp/bloom_block.onnx"
         self.h = [
             onnxruntime.InferenceSession(
@@ -703,7 +704,7 @@ class BloomModel(BloomPreTrainedModel):
 
         ##### ONNX WITH IO BINDING #####
 
-        from onnxruntime.transformers.io_binding_helper import IOBindingHelper
+        from .io_binding_helper import IOBindingHelper
         import numpy
 
         def get_output_buffers(output_shapes, device, is_float16=False):
@@ -715,7 +716,7 @@ class BloomModel(BloomPreTrainedModel):
                 output_buffers[name] = torch.empty(numpy.prod(shape), dtype=data_type, device=device)
             return output_buffers
 
-        def inference_with_io_binding(session, config, input_ids, position_ids, attention_mask, past, device):
+        def inference_with_io_binding(session, config, hidden_states, layer_number, layer_past, attention_mask, alibi):
             output_shapes = {
                 "outputs": [
                     input_ids.shape[0],
@@ -723,11 +724,14 @@ class BloomModel(BloomPreTrainedModel):
                     config.hidden_size,
                 ]
             }
+            device_id = int(session.get_provider_options()['CUDAExecutionProvider']["device_id"])
+            device = torch.device(f"cuda:{device_id}")
             output_buffers = get_output_buffers(output_shapes, device)
 
             io_binding = IOBindingHelper.prepare_io_binding(
-                session, input_ids, position_ids, attention_mask, past, output_buffers, output_shapes
+                session, hidden_states, layer_number, layer_past, attention_mask, alibi, output_buffers, output_shapes
             )
+
             session.run_with_iobinding(io_binding)
 
             outputs = IOBindingHelper.get_outputs_from_io_binding_buffer(
@@ -747,18 +751,19 @@ class BloomModel(BloomPreTrainedModel):
                     0,
                     self.config.n_head,
                     self.config.hidden_size // self.config.n_head,
-                    device=hidden_states.device,
+                    device=hidden_states.device if type(hidden_states) is torch.Tensor else None
                 )
-            ort_inputs = {
-                "hidden_states": numpy.ascontiguousarray(hidden_states.cpu().numpy()),
-                "layer_number": numpy.ascontiguousarray(max(1,i), dtype=numpy.int64), #TODO: fix maximum in ONNX graph
-                "layer_past": numpy.ascontiguousarray(layer_past.cpu().numpy()),
-                "attention_mask": numpy.ascontiguousarray(causal_mask.cpu().numpy()).astype(numpy.float32),
-                "alibi": numpy.ascontiguousarray(alibi.cpu().numpy()),
-            }
-            outputs = session.run(None, ort_inputs)
+            layer_number = torch.tensor(max(i, 1), dtype=torch.int)
+            # ort_inputs = {
+            #     "hidden_states": numpy.ascontiguousarray(hidden_states.cpu().numpy()),
+            #     "layer_number": numpy.ascontiguousarray(max(1,i), dtype=numpy.int64), #TODO: fix maximum in ONNX graph
+            #     "layer_past": numpy.ascontiguousarray(layer_past.cpu().numpy()),
+            #     "attention_mask": numpy.ascontiguousarray(causal_mask.cpu().numpy()).astype(numpy.float32),
+            #     "alibi": numpy.ascontiguousarray(alibi.cpu().numpy()),
+            # }
 
-            # outputs = inference_with_io_binding(session, self.config, input_ids, position_ids, attention_mask) # TODO:
+            # outputs = session.run(None, ort_inputs)
+            outputs = inference_with_io_binding(session, self.config, hidden_states, layer_number, layer_past, causal_mask, alibi)
 
             hidden_states = outputs[0]
             if use_cache is True:
