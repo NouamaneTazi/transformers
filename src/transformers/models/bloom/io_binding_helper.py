@@ -148,14 +148,12 @@ class IOBindingHelper:
         attention_mask = attention_mask.to(device)
         if not attention_mask.is_contiguous():
             attention_mask = attention_mask.contiguous()
-        assert attention_mask.is_contiguous()   
         io_binding.bind_input('attention_mask', attention_mask.device.type, device.index, name_to_np_type['attention_mask'],
                                 list(attention_mask.size()), attention_mask.data_ptr())         
 
         alibi = alibi.to(device)
         if not alibi.is_contiguous():
             alibi = alibi.contiguous()
-        assert alibi.is_contiguous()
         io_binding.bind_input('alibi', alibi.device.type, device.index, name_to_np_type['alibi'],          
                                 list(alibi.size()), alibi.data_ptr())       
 
