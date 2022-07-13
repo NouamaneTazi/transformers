@@ -690,19 +690,27 @@ class BloomModel(BloomPreTrainedModel):
 
             if layer_past is None:
                 # generate empty 2 * [batch_size, qk_length, num_heads, head_dim]
-                layer_past = torch.empty(2, hidden_states.shape[0], 0, self.config.n_head, self.config.hidden_size // self.config.n_head, device=hidden_states.device)
+                layer_past = torch.empty(
+                    2,
+                    hidden_states.shape[0],
+                    0,
+                    self.config.n_head,
+                    self.config.hidden_size // self.config.n_head,
+                    device=hidden_states.device,
+                )
             from pathlib import Path
             from torch.onnx import export as onnx_export
+
             model = block
             output = Path("./tmp/bloom_block.onnx")
             output.parent.mkdir(parents=True, exist_ok=True)
             model_inputs = (hidden_states, 5, layer_past, causal_mask, alibi, torch.tensor(use_cache))
             input_names = ["hidden_states", "layer_number", "layer_past", "attention_mask", "alibi", "use_cache"]
-            onnx_outputs = ["outputs"] # ["hidden_states", "present", "attentions"]
+            onnx_outputs = ["outputs"]  # ["hidden_states", "present", "attentions"]
             dynamic_axes = {
                 "hidden_states": {0: "batch_size", 1: "seq_len"},
                 "layer_past": {0: "batch_size", 1: "seq_len"},
-                "attention_mask" : {0: "batch_size"},
+                "attention_mask": {0: "batch_size"},
                 "alibi": {0: "batch_size * self.n_head"},
             }
             onnx_export(
@@ -712,11 +720,11 @@ class BloomModel(BloomPreTrainedModel):
                 input_names=input_names,
                 output_names=onnx_outputs,
                 dynamic_axes=dynamic_axes,
-                do_constant_folding=False, # removes None inputs from the graph
+                do_constant_folding=False,  # removes None inputs from the graph
                 opset_version=14,
             )
 
-            outputs = block( # TODO: replace this with inference session
+            outputs = block(  # TODO: replace this with inference session
                 hidden_states,
                 i,
                 layer_past=layer_past,
@@ -751,6 +759,7 @@ class BloomModel(BloomPreTrainedModel):
             hidden_states=all_hidden_states,
             attentions=all_self_attentions,
         )
+
 
 @add_start_docstrings(
     """
