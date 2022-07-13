@@ -229,8 +229,6 @@ class BloomAttention(nn.Module):
             )
 
         # Layer-wise attention scaling
-        self.layer_number = max(1, layer_number)
-        self.norm_factor = math.sqrt(self.head_dim) * self.layer_number
 
         self.query_key_value = nn.Linear(self.hidden_size, 3 * self.hidden_size, bias=True)
         self.dense = nn.Linear(self.hidden_size, self.hidden_size)
@@ -291,7 +289,7 @@ class BloomAttention(nn.Module):
             present = None
 
         layer_number = max(1, layer_number)
-        beta = 1.0 / self.layer_number
+        beta = 1.0 / layer_number
         norm_factor = math.sqrt(self.head_dim) * layer_number
 
         # # [batch_size*num_heads, head_dim, q_length] x [batch_size*num_heads, head_dim, k_length] -> [batch_size*num_heads, q_length, k_length]
@@ -305,7 +303,7 @@ class BloomAttention(nn.Module):
 
         # We replace the scaled softmax by just a few line of code - [batch_size, num_heads, q_length, k_length]
         input_dtype = attention_scores.dtype
-        attn_weights = (attention_scores * self.layer_number) + attention_mask
+        attn_weights = (attention_scores * layer_number) + attention_mask
         attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
         attention_probs = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(input_dtype)
         attention_probs = attention_probs * (~attention_mask.bool())
