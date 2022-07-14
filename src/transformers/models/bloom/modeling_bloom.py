@@ -581,7 +581,7 @@ class BloomModel(BloomPreTrainedModel):
         # Set graph optimization level
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         sess_options.enable_profiling = True
-        self.sessions = [
+        self.h = [
             onnxruntime.InferenceSession(
                 f"/home/nouamane/projects/transformers/tmp/h.{i}.onnx",
                 sess_options=sess_options,
@@ -597,7 +597,6 @@ class BloomModel(BloomPreTrainedModel):
             )
             for i in range(config.num_hidden_layers)
         ]
-        self.h = nn.ModuleList([BloomBlock(config, layer_number=i) for i in range(config.num_hidden_layers)])
 
         # Final Layer Norm
         self.ln_f = LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
@@ -709,9 +708,8 @@ class BloomModel(BloomPreTrainedModel):
 
         ##### ONNX WITH IO BINDING #####
         from .io_binding_helper import inference_with_io_binding
-        import numpy
 
-        for i, (block, session, layer_past) in enumerate(zip(self.h, self.sessions, past_key_values)):
+        for i, (session, layer_past) in enumerate(zip(self.h, past_key_values)):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -727,39 +725,8 @@ class BloomModel(BloomPreTrainedModel):
                     device=hidden_states.device if type(hidden_states) is torch.Tensor else None
                 )
             layer_number = torch.tensor(max(i, 1), dtype=torch.int)
-            ort_inputs = {
-                "hidden_states": numpy.ascontiguousarray(hidden_states.cpu().numpy()),
-                "layer_number": numpy.ascontiguousarray(max(1,i), dtype=numpy.int32), #TODO: fix maximum in ONNX graph
-                "layer_past": numpy.ascontiguousarray(layer_past.cpu().numpy()),
-                "attention_mask": numpy.ascontiguousarray(causal_mask.cpu().numpy()).astype(numpy.float32),
-                "alibi": numpy.ascontiguousarray(alibi.cpu().numpy()),
-            }
 
-            outputs_cpu = session.run(None, ort_inputs)
             outputs = inference_with_io_binding(session, hidden_states, layer_number, layer_past, causal_mask, alibi)
-
-            outputs_0 = block(
-                hidden_states,
-                layer_number,
-                layer_past=layer_past,
-                attention_mask=causal_mask,
-                head_mask=head_mask[i],
-                use_cache=use_cache,
-                output_attentions=False,
-                alibi=alibi,
-            )
-            try:
-                torch.testing.assert_close(outputs_0[0], outputs[0], atol=0, rtol=0)
-            except Exception as e:
-                print(e)
-            try:
-                torch.testing.assert_close(outputs_0[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device), atol=0, rtol=0)
-            except Exception as e:
-                print(e)
-            try:
-                torch.testing.assert_close(outputs[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device), atol=0, rtol=0)
-            except Exception as e:
-                print(e)
 
             hidden_states = outputs[0]
             if use_cache is True:
