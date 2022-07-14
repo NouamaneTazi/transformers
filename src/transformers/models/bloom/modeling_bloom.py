@@ -705,7 +705,7 @@ class BloomModel(BloomPreTrainedModel):
 
             output = Path("./tmp/bloom_block.onnx")
             output.parent.mkdir(parents=True, exist_ok=True)
-            model_inputs = (hidden_states, torch.tensor(5, dtype=torch.int), layer_past, causal_mask, alibi, torch.tensor(use_cache))
+            model_inputs = (torch.ones_like(hidden_states), torch.tensor(5, dtype=torch.int), layer_past, torch.ones_like(causal_mask), torch.ones_like(alibi), torch.tensor(use_cache))
             input_names = ["hidden_states", "layer_number", "layer_past", "attention_mask", "alibi", "use_cache"]
             onnx_outputs = ["outputs"]  # ["hidden_states", "present", "attentions"]
             dynamic_axes = {
@@ -728,7 +728,7 @@ class BloomModel(BloomPreTrainedModel):
 
             outputs = block(
                 hidden_states,
-                i,
+                max(1,i),
                 layer_past=layer_past,
                 attention_mask=causal_mask,
                 head_mask=head_mask[i],
