@@ -762,7 +762,7 @@ class BloomModel(BloomPreTrainedModel):
             layer_number = torch.tensor(max(i, 1), dtype=torch.int)
             ort_inputs = {
                 "hidden_states": numpy.ascontiguousarray(hidden_states.cpu().numpy()),
-                "layer_number": numpy.ascontiguousarray(max(1,i), dtype=numpy.int64), #TODO: fix maximum in ONNX graph
+                "layer_number": numpy.ascontiguousarray(max(1,i), dtype=numpy.int32), #TODO: fix maximum in ONNX graph
                 "layer_past": numpy.ascontiguousarray(layer_past.cpu().numpy()),
                 "attention_mask": numpy.ascontiguousarray(causal_mask.cpu().numpy()).astype(numpy.float32),
                 "alibi": numpy.ascontiguousarray(alibi.cpu().numpy()),
