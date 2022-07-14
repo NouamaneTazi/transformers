@@ -736,7 +736,7 @@ class BloomModel(BloomPreTrainedModel):
             }
 
             outputs_cpu = session.run(None, ort_inputs)
-            outputs = inference_with_io_binding(session, self.config, hidden_states, layer_number, layer_past, causal_mask, alibi)
+            outputs = inference_with_io_binding(session, hidden_states, layer_number, layer_past, causal_mask, alibi)
 
             outputs_0 = block(
                 hidden_states,
@@ -760,7 +760,7 @@ class BloomModel(BloomPreTrainedModel):
                 torch.testing.assert_close(outputs[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device), atol=0, rtol=0)
             except Exception as e:
                 print(e)
-                
+
             hidden_states = outputs[0]
             if use_cache is True:
                 presents = presents + (outputs[1],)
