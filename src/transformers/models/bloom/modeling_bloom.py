@@ -697,11 +697,15 @@ class BloomModel(BloomPreTrainedModel):
                 )
             from pathlib import Path
             from torch.onnx import export as onnx_export
+            use_gpu = True
 
             model = block
+            device = torch.device("cuda:0" if use_gpu else "cpu")
+            model.eval().to(device)
+
             output = Path("./tmp/bloom_block.onnx")
             output.parent.mkdir(parents=True, exist_ok=True)
-            model_inputs = (hidden_states, 5, layer_past, causal_mask, alibi, torch.tensor(use_cache))
+            model_inputs = (hidden_states, torch.tensor(5, dtype=torch.int), layer_past, causal_mask, alibi, torch.tensor(use_cache))
             input_names = ["hidden_states", "layer_number", "layer_past", "attention_mask", "alibi", "use_cache"]
             onnx_outputs = ["outputs"]  # ["hidden_states", "present", "attentions"]
             dynamic_axes = {
@@ -719,6 +723,7 @@ class BloomModel(BloomPreTrainedModel):
                 dynamic_axes=dynamic_axes,
                 do_constant_folding=False,  # removes None inputs from the graph
                 opset_version=14,
+                verbose=True,
             )
 
             outputs = block(
