@@ -787,6 +787,9 @@ class BloomModel(BloomPreTrainedModel):
                 print(e)
             try:
                 torch.testing.assert_close(outputs_0[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device), atol=0, rtol=0)
+            except Exception as e:
+                print(e)
+            try:
                 torch.testing.assert_close(outputs[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device), atol=0, rtol=0)
             except Exception as e:
                 print(e)
