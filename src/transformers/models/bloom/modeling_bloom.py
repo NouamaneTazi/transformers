@@ -582,6 +582,7 @@ class BloomModel(BloomPreTrainedModel):
         sess_options = onnxruntime.SessionOptions()
         # Set graph optimization level
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        sess_options.enable_profiling = True
         self.sessions = [
             onnxruntime.InferenceSession(
                 onnx_model_path,
