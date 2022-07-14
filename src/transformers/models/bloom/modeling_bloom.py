@@ -577,15 +577,13 @@ class BloomModel(BloomPreTrainedModel):
         import logging
         logging.basicConfig(level=logging.DEBUG)
         import onnxruntime
-        onnx_model_path = "/home/nouamane/projects/transformers/tmp/bloom_block.onnx"
-
         sess_options = onnxruntime.SessionOptions()
         # Set graph optimization level
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         sess_options.enable_profiling = True
         self.sessions = [
             onnxruntime.InferenceSession(
-                onnx_model_path,
+                f"/home/nouamane/projects/transformers/tmp/h.{i}.onnx",
                 sess_options=sess_options,
                 providers=[
                     (
@@ -710,46 +708,14 @@ class BloomModel(BloomPreTrainedModel):
         causal_mask = self._prepare_attn_mask(attention_mask, input_shape, inputs_embeds, past_key_values_length)
 
         ##### ONNX WITH IO BINDING #####
-
-        from .io_binding_helper import IOBindingHelper
+        from .io_binding_helper import inference_with_io_binding
         import numpy
 
-        def get_output_buffers(output_shapes, device, is_float16=False):
-            """Returns a dictionary of output name as key, and 1D tensor as value. The tensor has enough space for given shape."""
-            data_type = torch.float16 if is_float16 else torch.float32
-
-            output_buffers = {}
-            for name, shape in output_shapes.items():
-                output_buffers[name] = torch.empty(numpy.prod(shape), dtype=data_type, device=device)
-            return output_buffers
-
-        def inference_with_io_binding(session, config, hidden_states, layer_number, layer_past, attention_mask, alibi):
-            output_shapes = {
-                "outputs": [
-                    input_ids.shape[0],
-                    input_ids.shape[1],
-                    config.hidden_size,
-                ]
-            }
-            device_id = int(session.get_provider_options()['CUDAExecutionProvider']["device_id"])
-            device = torch.device(f"cuda:{device_id}")
-            output_buffers = get_output_buffers(output_shapes, device)
-
-            io_binding = IOBindingHelper.prepare_io_binding(
-                session, hidden_states, layer_number, layer_past, attention_mask, alibi, output_buffers, output_shapes
-            )
-
-            session.run_with_iobinding(io_binding)
-
-            outputs = IOBindingHelper.get_outputs_from_io_binding_buffer(
-                session, output_buffers, output_shapes, return_numpy=False
-            )
-            return outputs
-
         for i, (block, session, layer_past) in enumerate(zip(self.h, self.sessions, past_key_values)):
-
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
+
+            # ONNX doesnt like None inputs
             if layer_past is None:
                 # generate empty 2 * [batch_size, qk_length, num_heads, head_dim]
                 layer_past = torch.empty(
@@ -794,7 +760,8 @@ class BloomModel(BloomPreTrainedModel):
                 torch.testing.assert_close(outputs[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device), atol=0, rtol=0)
             except Exception as e:
                 print(e)
-            hidden_states = outputs_0[0]
+                
+            hidden_states = outputs[0]
             if use_cache is True:
                 presents = presents + (outputs[1],)
 

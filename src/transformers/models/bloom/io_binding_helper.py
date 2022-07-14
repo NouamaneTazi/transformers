@@ -9,6 +9,38 @@ from onnxruntime import InferenceSession
 logger = logging.getLogger(__name__)
 
 
+def get_output_buffers(output_shapes, device, is_float16=False):
+    """Returns a dictionary of output name as key, and 1D tensor as value. The tensor has enough space for given shape."""
+    data_type = torch.float16 if is_float16 else torch.float32
+
+    output_buffers = {}
+    for name, shape in output_shapes.items():
+        output_buffers[name] = torch.empty(numpy.prod(shape), dtype=data_type, device=device)
+    return output_buffers
+
+def inference_with_io_binding(session, config, hidden_states, layer_number, layer_past, attention_mask, alibi):
+    output_shapes = {
+        "outputs": [
+            hidden_states.shape[0],
+            hidden_states.shape[1],
+            config.hidden_size,
+        ]
+    }
+    device_id = int(session.get_provider_options()['CUDAExecutionProvider']["device_id"])
+    device = torch.device(f"cuda:{device_id}")
+    output_buffers = get_output_buffers(output_shapes, device)
+
+    io_binding = IOBindingHelper.prepare_io_binding(
+        session, hidden_states, layer_number, layer_past, attention_mask, alibi, output_buffers, output_shapes
+    )
+
+    session.run_with_iobinding(io_binding)
+
+    outputs = IOBindingHelper.get_outputs_from_io_binding_buffer(
+        session, output_buffers, output_shapes, return_numpy=False
+    )
+    return outputs
+
 class TypeHelper:
 
     @staticmethod
