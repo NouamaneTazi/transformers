@@ -19,11 +19,11 @@ def get_output_buffers(output_shapes, device, is_float16=False):
     return output_buffers
 
 
-def inference_with_io_binding(session, hidden_states, layer_number, layer_past, attention_mask, alibi):
+def inference_with_io_binding(session, hidden_states, layer_number, layer_past, attention_mask, alibi, is_float16=False):
     output_shapes = {"outputs": list(hidden_states.shape)}
     device_id = int(session.get_provider_options()["CUDAExecutionProvider"]["device_id"])
     device = torch.device(f"cuda:{device_id}")
-    output_buffers = get_output_buffers(output_shapes, device)
+    output_buffers = get_output_buffers(output_shapes, device, is_float16=is_float16)
 
     io_binding = IOBindingHelper.prepare_io_binding(
         session, hidden_states, layer_number, layer_past, attention_mask, alibi, output_buffers, output_shapes

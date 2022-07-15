@@ -583,7 +583,7 @@ class BloomModel(BloomPreTrainedModel):
         sess_options.enable_profiling = True
         self.sessions = [
             onnxruntime.InferenceSession(
-                f"/home/nouamane/projects/transformers/tmp/h.{i}.onnx",
+                f"/home/nouamane/projects/transformers/tmp/fp16/h.{i}.onnx",
                 sess_options=sess_options,
                 providers=[
                     (
@@ -731,12 +731,12 @@ class BloomModel(BloomPreTrainedModel):
                 "hidden_states": numpy.ascontiguousarray(hidden_states.cpu().numpy()),
                 "layer_number": numpy.ascontiguousarray(max(1,i), dtype=numpy.int32), #TODO: fix maximum in ONNX graph
                 "layer_past": numpy.ascontiguousarray(layer_past.cpu().numpy()),
-                "attention_mask": numpy.ascontiguousarray(causal_mask.cpu().numpy()).astype(numpy.float32),
+                "attention_mask": numpy.ascontiguousarray(causal_mask.cpu().numpy()).astype(numpy.float16),
                 "alibi": numpy.ascontiguousarray(alibi.cpu().numpy()),
             }
 
             outputs_cpu = session.run(None, ort_inputs)
-            outputs = inference_with_io_binding(session, hidden_states, layer_number, layer_past, causal_mask, alibi)
+            outputs = inference_with_io_binding(session, hidden_states, layer_number, layer_past, causal_mask, alibi, is_float16=True)
 
             outputs_0 = block(
                 hidden_states,
@@ -748,17 +748,22 @@ class BloomModel(BloomPreTrainedModel):
                 output_attentions=False,
                 alibi=alibi,
             )
+            print("----- Layer {} -----".format(i))
             try:
                 torch.testing.assert_close(outputs_0[0], outputs[0], atol=0, rtol=0)
             except Exception as e:
+                print()
+                print("Pytorch vs ONNW w/IO Binding")
                 print(e)
             try:
                 torch.testing.assert_close(outputs_0[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device), atol=0, rtol=0)
             except Exception as e:
+                print("Pytorch vs ONNX")
                 print(e)
             try:
                 torch.testing.assert_close(outputs[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device), atol=0, rtol=0)
             except Exception as e:
+                print("ONNX w/IO Binding vs ONNX")
                 print(e)
 
             hidden_states = outputs[0]
