@@ -1664,6 +1664,7 @@ class GenerationMixin:
         cur_len = input_ids.shape[-1]
 
         this_peer_finished = False  # used by synced_gpus only
+        times = []
         while True:
 
             if synced_gpus:
@@ -1680,12 +1681,17 @@ class GenerationMixin:
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             # forward pass to get next token
+            import time
+            start = time.time()
             outputs = self(
                 **model_inputs,
                 return_dict=True,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
             )
+            end = time.time()
+            print(f"forward pass took {end - start:.2f} seconds")
+            times.append(end - start)
 
             if synced_gpus and this_peer_finished:
                 cur_len = cur_len + 1
@@ -1741,6 +1747,8 @@ class GenerationMixin:
                 else:
                     this_peer_finished = True
 
+        print(f"- Average forward pass time: {sum(times) / len(times):.2f} seconds")
+        print(f"- Total time: {sum(times):.2f} seconds")
         if return_dict_in_generate:
             if self.config.is_encoder_decoder:
                 return GreedySearchEncoderDecoderOutput(
