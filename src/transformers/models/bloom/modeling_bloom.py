@@ -750,18 +750,18 @@ class BloomModel(BloomPreTrainedModel):
             )
             print("----- Layer {} -----".format(i))
             try:
-                torch.testing.assert_close(outputs_0[0], outputs[0], atol=0, rtol=0)
+                torch.testing.assert_close(outputs_0[0], outputs[0])
             except Exception as e:
                 print()
                 print("Pytorch vs ONNW w/IO Binding")
                 print(e)
             try:
-                torch.testing.assert_close(outputs_0[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device), atol=0, rtol=0)
+                torch.testing.assert_close(outputs_0[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device))
             except Exception as e:
                 print("Pytorch vs ONNX")
                 print(e)
             try:
-                torch.testing.assert_close(outputs[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device), atol=0, rtol=0)
+                torch.testing.assert_close(outputs[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device))
             except Exception as e:
                 print("ONNX w/IO Binding vs ONNX")
                 print(e)
