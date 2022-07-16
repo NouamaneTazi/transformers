@@ -703,7 +703,7 @@ class BloomModel(BloomPreTrainedModel):
             device = torch.device("cuda:0" if use_gpu else "cpu")
             model.eval().to(device)
 
-            output = Path(f"./tmp/fp16/h.{i}.onnx")
+            output = Path(f"./tmp/760m/fp16/h.{i}.onnx")
             output.parent.mkdir(parents=True, exist_ok=True)
             model_inputs = (torch.ones_like(hidden_states).to(device), torch.tensor(5, dtype=torch.int).to(device), layer_past.to(device), torch.ones_like(causal_mask).to(device), torch.ones_like(alibi).to(device), torch.tensor(use_cache).to(device))
             input_names = ["hidden_states", "layer_number", "layer_past", "attention_mask", "alibi", "use_cache"]
