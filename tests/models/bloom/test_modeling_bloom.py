@@ -434,6 +434,46 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
 
     @slow
     @require_torch_gpu
+    def test_repetition_padd(self):
+        max_length = 50
+
+        path_350m = "bigscience/bloom-1b3"
+        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=False, torch_dtype=torch.float32).cuda()
+        model = model.eval()
+        tokenizer = BloomTokenizerFast.from_pretrained(path_350m, padding_side="left")
+
+        input_sentence = ["I enjoy walking with my cute dog", "The new movie that got Oscar this year"]
+        input_sentence_without_pad = "The new movie that got Oscar this year"
+
+        input_ids = tokenizer.batch_encode_plus(input_sentence, return_tensors="pt", padding="max_length", max_length=max_length)
+        input_ids_without_pad = tokenizer.encode(input_sentence_without_pad, return_tensors="pt")
+
+        torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = False
+
+        greedy_output = model.generate(
+            input_ids["input_ids"].cuda(), attention_mask=input_ids["attention_mask"], max_length=max_length+100, do_sample=False
+        )
+        greedy_output_without_pad = model.generate(input_ids_without_pad.cuda(), max_length=max_length+100, do_sample=False)
+
+        # test token values
+        a = greedy_output[-1, max_length-input_ids_without_pad.shape[1]:].tolist()
+        b = greedy_output_without_pad[0, :len(a)].tolist()
+
+        print(tokenizer.decode(a, skip_special_tokens=True))
+        print("=" * 80)
+        print(tokenizer.decode(b, skip_special_tokens=True))
+
+        # torch.testing.assert_close(a,b)
+        self.assertEqual(a, b)
+
+        # test reconstructions
+        self.assertEqual(
+            tokenizer.decode(greedy_output[-1, 3:], skip_special_tokens=True),
+            tokenizer.decode(greedy_output_without_pad[0, :-3], skip_special_tokens=True),
+        )
+
+    @slow
+    @require_torch_gpu
     def test_batch_generation_padd(self):
 
         path_350m = "bigscience/bloom-350m"
