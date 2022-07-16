@@ -581,9 +581,10 @@ class BloomModel(BloomPreTrainedModel):
         # Set graph optimization level
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         sess_options.enable_profiling = True
+        model_name = self.config._name_or_path.replace("bigscience/bloom-", "")
         self.sessions = [
             onnxruntime.InferenceSession(
-                f"/home/nouamane/projects/transformers/tmp/fp16/h.{i}.onnx",
+                f"/home/nouamane/projects/transformers/tmp/{model_name}/fp16/h.{i}.onnx",
                 sess_options=sess_options,
                 providers=[
                     (
