@@ -297,6 +297,15 @@ class BloomAttention(nn.Module):
             key_layer.permute(0, 2, 3, 1).reshape(-1, key_layer.shape[3], key_layer.shape[1]),
         ) + beta * alibi
 
+        
+        # matmul_result = torch.baddbmm(
+        #     alibi,
+        #     query_layer.transpose(1, 2).reshape(-1, query_layer.shape[1], query_layer.shape[3]),
+        #     key_layer.permute(0, 2, 3, 1).reshape(-1, key_layer.shape[3], key_layer.shape[1]),
+        #     beta=beta,
+        #     alpha=1.0 / self.norm_factor,
+        # )
+
         # change view to [batch_size, num_heads, q_length, k_length]
         attention_scores = matmul_result.view(-1, self.num_heads, matmul_result.size(1), matmul_result.size(2))
 
