@@ -229,6 +229,8 @@ class BloomAttention(nn.Module):
             )
 
         # Layer-wise attention scaling
+        self.layer_number = max(1, layer_number)
+        self.norm_factor = math.sqrt(self.head_dim) * self.layer_number
 
         self.query_key_value = nn.Linear(self.hidden_size, 3 * self.hidden_size, bias=True)
         self.dense = nn.Linear(self.hidden_size, self.hidden_size)
@@ -263,7 +265,6 @@ class BloomAttention(nn.Module):
         self,
         hidden_states,
         residual,
-        layer_number,
         layer_past=None,
         attention_mask=None,
         alibi=None,
@@ -288,12 +289,10 @@ class BloomAttention(nn.Module):
         else:
             present = None
 
-        layer_number = max(1, layer_number)
-        beta = 1.0 / layer_number
-        norm_factor = math.sqrt(self.head_dim) * layer_number
+        beta = 1.0 / self.layer_number
 
         # # [batch_size*num_heads, head_dim, q_length] x [batch_size*num_heads, head_dim, k_length] -> [batch_size*num_heads, q_length, k_length]
-        matmul_result = (1.0 / norm_factor) * torch.bmm(
+        matmul_result = (1.0 / self.norm_factor) * torch.bmm(
             query_layer.transpose(1, 2).reshape(-1, query_layer.shape[1], query_layer.shape[3]),
             key_layer.permute(0, 2, 3, 1).reshape(-1, key_layer.shape[3], key_layer.shape[1]),
         ) + beta * alibi
@@ -303,7 +302,7 @@ class BloomAttention(nn.Module):
 
         # We replace the scaled softmax by just a few line of code - [batch_size, num_heads, q_length, k_length]
         input_dtype = attention_scores.dtype
-        attn_weights = (attention_scores * layer_number) + attention_mask
+        attn_weights = (attention_scores * self.layer_number) + attention_mask
         attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
         attention_probs = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(input_dtype)
         attention_probs = attention_probs * (~attention_mask.bool())
@@ -394,7 +393,6 @@ class BloomBlock(nn.Module):
     def forward(
         self,
         hidden_states,
-        layer_number,
         layer_past=None,
         attention_mask=None,
         alibi=None,
@@ -417,7 +415,6 @@ class BloomBlock(nn.Module):
         attn_outputs = self.self_attention(
             layernorm_output,
             residual,
-            layer_number,
             layer_past=layer_past,
             attention_mask=attention_mask,
             alibi=alibi,
@@ -591,7 +588,7 @@ class BloomModel(BloomPreTrainedModel):
                         "CUDAExecutionProvider",
                         {
                             "device_id": 0,
-                            "enable_cuda_graph": '1'
+                            # "enable_cuda_graph": '1'
                         },
                     ),
                     # "CPUExecutionProvider",
@@ -728,21 +725,18 @@ class BloomModel(BloomPreTrainedModel):
                     self.config.hidden_size // self.config.n_head,
                     device=hidden_states.device if type(hidden_states) is torch.Tensor else None
                 )
-            layer_number = torch.tensor(max(i, 1), dtype=torch.int)
             ort_inputs = {
                 "hidden_states": numpy.ascontiguousarray(hidden_states.cpu().numpy()),
-                "layer_number": numpy.ascontiguousarray(max(1,i), dtype=numpy.int32), #TODO: fix maximum in ONNX graph
                 "layer_past": numpy.ascontiguousarray(layer_past.cpu().numpy()),
                 "attention_mask": numpy.ascontiguousarray(causal_mask.cpu().numpy()).astype(numpy.float16),
                 "alibi": numpy.ascontiguousarray(alibi.cpu().numpy()),
             }
 
             outputs_cpu = session.run(None, ort_inputs)
-            outputs = inference_with_io_binding(session, hidden_states, layer_number, layer_past, causal_mask, alibi, is_float16=True)
+            outputs = inference_with_io_binding(session, hidden_states, layer_past, causal_mask, alibi, is_float16=True)
 
             outputs_0 = block(
                 hidden_states,
-                layer_number,
                 layer_past=layer_past,
                 attention_mask=causal_mask,
                 head_mask=head_mask[i],

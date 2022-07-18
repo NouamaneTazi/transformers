@@ -19,14 +19,14 @@ def get_output_buffers(output_shapes, device, is_float16=False):
     return output_buffers
 
 
-def inference_with_io_binding(session, hidden_states, layer_number, layer_past, attention_mask, alibi, is_float16=False):
+def inference_with_io_binding(session, hidden_states, layer_past, attention_mask, alibi, is_float16=False):
     output_shapes = {"outputs": list(hidden_states.shape)}
     device_id = int(session.get_provider_options()["CUDAExecutionProvider"]["device_id"])
     device = torch.device(f"cuda:{device_id}")
     output_buffers = get_output_buffers(output_shapes, device, is_float16=is_float16)
 
     io_binding = IOBindingHelper.prepare_io_binding(
-        session, hidden_states, layer_number, layer_past, attention_mask, alibi, output_buffers, output_shapes
+        session, hidden_states, layer_past, attention_mask, alibi, output_buffers, output_shapes
     )
 
     session.run_with_iobinding(io_binding)
@@ -132,7 +132,6 @@ class IOBindingHelper:
     def prepare_io_binding(
         ort_session,
         hidden_states,
-        layer_number,
         layer_past,
         attention_mask,
         alibi,
@@ -161,18 +160,6 @@ class IOBindingHelper:
             name_to_np_type["hidden_states"],
             list(hidden_states.size()),
             hidden_states.data_ptr(),
-        )
-
-        layer_number = layer_number.to(device)
-        if not layer_number.is_contiguous():
-            layer_number = layer_number.contiguous()
-        io_binding.bind_input(
-            "layer_number",
-            layer_number.device.type,
-            device.index,
-            name_to_np_type["layer_number"],
-            list(layer_number.size()),
-            layer_number.data_ptr(),
         )
 
         layer_past = layer_past.to(device)
