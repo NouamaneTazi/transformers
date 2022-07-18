@@ -413,7 +413,7 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
         self.assertEqual(tokenizer.decode(greedy_output[0], skip_special_tokens=True), EXPECTED_OUTPUT)
         
     def test_export_fp16(self):
-        path_350m = "bigscience/bloom-350m"
+        path_350m = "bigscience/bloom-760m"
         model = BloomForCausalLM.from_pretrained(path_350m, use_cache=False, torch_dtype=torch.float16).cuda()
         model = model.eval()
         tokenizer = BloomTokenizerFast.from_pretrained(path_350m)

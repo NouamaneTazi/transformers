@@ -591,6 +591,7 @@ class BloomModel(BloomPreTrainedModel):
                         "CUDAExecutionProvider",
                         {
                             "device_id": 0,
+                            "enable_cuda_graph": '1'
                         },
                     ),
                     # "CPUExecutionProvider",
