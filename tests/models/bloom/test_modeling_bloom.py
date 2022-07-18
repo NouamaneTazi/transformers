@@ -435,7 +435,7 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
     @slow
     @require_torch_gpu
     def test_export_fp16(self):
-        path_350m = "bigscience/bloom-760m"
+        path_350m = "bigscience/bloom-350m"
         model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, torch_dtype=torch.float16).cuda()
         model = model.eval()
         tokenizer = BloomTokenizerFast.from_pretrained(path_350m)

@@ -701,7 +701,7 @@ class BloomModel(BloomPreTrainedModel):
             device = torch.device("cuda:0" if use_gpu else "cpu")
             model.eval().to(device)
 
-            output = Path(f"./tmp/760m/fp16/h.{i}.onnx")
+            output = Path(f"./tmp/350m/fp16/h.{i}.onnx")
             output.parent.mkdir(parents=True, exist_ok=True)
             model_inputs = (hidden_states, layer_past.to(device), torch.ones_like(causal_mask).to(device), torch.ones_like(alibi).to(device), torch.tensor(use_cache).to(device))
             input_names = ["hidden_states", "layer_past", "attention_mask", "alibi", "use_cache"]
@@ -712,17 +712,17 @@ class BloomModel(BloomPreTrainedModel):
                 "attention_mask": {0: "batch_size", 2: "seq_len", 3: "max_seq_len"},
                 "alibi": {0: "batch_size * n_head", 2: "max_seq_len"},
             }
-            onnx_export(
-                model,
-                model_inputs,
-                f=output.as_posix(),
-                input_names=input_names,
-                output_names=onnx_outputs,
-                dynamic_axes=dynamic_axes,
-                do_constant_folding=False,  # removes None inputs from the graph
-                opset_version=14,
-                verbose=True,
-            )
+            # onnx_export(
+            #     model,
+            #     model_inputs,
+            #     f=output.as_posix(),
+            #     input_names=input_names,
+            #     output_names=onnx_outputs,
+            #     dynamic_axes=dynamic_axes,
+            #     do_constant_folding=False,  # removes None inputs from the graph
+            #     opset_version=14,
+            #     verbose=True,
+            # )
 
             outputs = block(
                 hidden_states,
