@@ -434,6 +434,26 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
 
     @slow
     @require_torch_gpu
+    def test_export_fp16(self):
+        path_350m = "bigscience/bloom-760m"
+        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, torch_dtype=torch.float16).cuda()
+        model = model.eval()
+        tokenizer = BloomTokenizerFast.from_pretrained(path_350m)
+
+        input_sentence = "I enjoy walking with my cute dog"
+        # This output has been obtained using fp32 model on the huggingface DGX workstation - NVIDIA A100 GPU
+        EXPECTED_OUTPUT = (
+            "I enjoy walking with my cute dog, and I love to watch the kids play with the kids. I am a very "
+            "active person, and I enjoy working out, and I am a very active person. I am a very active person, and I"
+        )
+
+        input_ids = tokenizer.encode(input_sentence, return_tensors="pt")
+        greedy_output = model.generate(input_ids.cuda(), max_length=50)
+
+        self.assertEqual(tokenizer.decode(greedy_output[0], skip_special_tokens=True), EXPECTED_OUTPUT)
+
+    @slow
+    @require_torch_gpu
     def test_batch_generation_padd(self):
 
         path_350m = "bigscience/bloom-350m"
