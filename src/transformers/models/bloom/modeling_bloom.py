@@ -712,17 +712,17 @@ class BloomModel(BloomPreTrainedModel):
                 "attention_mask": {0: "batch_size", 2: "seq_len", 3: "max_seq_len"},
                 "alibi": {0: "batch_size * n_head", 2: "max_seq_len"},
             }
-            # onnx_export(
-            #     model,
-            #     model_inputs,
-            #     f=output.as_posix(),
-            #     input_names=input_names,
-            #     output_names=onnx_outputs,
-            #     dynamic_axes=dynamic_axes,
-            #     do_constant_folding=False,  # removes None inputs from the graph
-            #     opset_version=14,
-            #     verbose=True,
-            # )
+            onnx_export(
+                model,
+                model_inputs,
+                f=output.as_posix(),
+                input_names=input_names,
+                output_names=onnx_outputs,
+                dynamic_axes=dynamic_axes,
+                do_constant_folding=False,  # removes None inputs from the graph
+                opset_version=14,
+                verbose=True,
+            )
 
             outputs = block(
                 hidden_states,
