@@ -480,6 +480,35 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
             tokenizer.decode(greedy_output[-1, 3:], skip_special_tokens=True),
             tokenizer.decode(greedy_output_without_pad[0, :-3], skip_special_tokens=True),
         )
+        
+    @slow
+    @require_torch_gpu
+    def test_export_small_testing(self):
+
+        path_350m = "bigscience/bigscience-small-testing"
+        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, torch_dtype=torch.bfloat16)
+        model = model.eval()
+        tokenizer = BloomTokenizerFast.from_pretrained(path_350m, padding_side="left")
+
+        input_sentence = ["I enjoy walking with my cute dog", "Hello my name is"]
+        input_sentence_without_pad = "Hello my name is"
+
+        input_ids = tokenizer.batch_encode_plus(input_sentence, return_tensors="pt", padding=True)
+        input_ids_without_pad = tokenizer.encode(input_sentence_without_pad, return_tensors="pt")
+
+        greedy_output_without_pad = model.generate(input_ids_without_pad, max_length=50, do_sample=False)
+        greedy_output = model.generate(
+            input_ids["input_ids"].cuda(), attention_mask=input_ids["attention_mask"], max_length=50, do_sample=False
+        )
+
+        # test token values
+        self.assertEqual(greedy_output[-1, 3:].tolist(), greedy_output_without_pad[0, :-3].tolist())
+
+        # test reconstructions
+        self.assertEqual(
+            tokenizer.decode(greedy_output[-1, 3:], skip_special_tokens=True),
+            tokenizer.decode(greedy_output_without_pad[0, :-3], skip_special_tokens=True),
+        )
 
     @slow
     def test_right_left_batched_input(self):
