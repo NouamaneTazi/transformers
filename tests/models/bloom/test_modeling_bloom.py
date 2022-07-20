@@ -457,7 +457,7 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
     def test_batch_generation_padd(self):
 
         path_350m = "bigscience/bloom-350m"
-        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, torch_dtype=torch.float16).cuda()
+        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, torch_dtype=torch.bfloat16).cuda()
         model = model.eval()
         tokenizer = BloomTokenizerFast.from_pretrained(path_350m, padding_side="left")
 
@@ -486,7 +486,7 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
     def test_export_small_testing(self):
 
         path_350m = "bigscience/bigscience-small-testing"
-        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, torch_dtype=torch.bfloat16)
+        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, torch_dtype=torch.float16).cuda()
         model = model.eval()
         tokenizer = BloomTokenizerFast.from_pretrained(path_350m, padding_side="left")
 
@@ -496,7 +496,7 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
         input_ids = tokenizer.batch_encode_plus(input_sentence, return_tensors="pt", padding=True)
         input_ids_without_pad = tokenizer.encode(input_sentence_without_pad, return_tensors="pt")
 
-        greedy_output_without_pad = model.generate(input_ids_without_pad, max_length=50, do_sample=False)
+        greedy_output_without_pad = model.generate(input_ids_without_pad.cuda(), max_length=50, do_sample=False)
         greedy_output = model.generate(
             input_ids["input_ids"].cuda(), attention_mask=input_ids["attention_mask"], max_length=50, do_sample=False
         )

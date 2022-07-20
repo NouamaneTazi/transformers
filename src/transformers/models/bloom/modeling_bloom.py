@@ -693,6 +693,7 @@ class BloomModel(BloomPreTrainedModel):
                     self.config.n_head,
                     self.config.hidden_size // self.config.n_head,
                     device=hidden_states.device,
+                    dtype=hidden_states.dtype,
                 )
             from pathlib import Path
             from torch.onnx import export as onnx_export
@@ -702,7 +703,7 @@ class BloomModel(BloomPreTrainedModel):
             device = torch.device("cuda:0" if use_gpu else "cpu")
             model.eval().to(device)
 
-            output = Path(f"./tmp/small-testing/fp16/h.{i}.onnx")
+            output = Path(f"./tmp/small-testing/bf16/h.{i}.onnx")
             output.parent.mkdir(parents=True, exist_ok=True)
             model_inputs = (hidden_states, layer_past.to(device), causal_mask.to(device), alibi.to(device), torch.tensor(use_cache).to(device))
             input_names = ["hidden_states", "layer_past", "attention_mask", "alibi", "use_cache"]
