@@ -486,7 +486,7 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
     def test_export_small_testing(self):
 
         path_350m = "bigscience/bigscience-small-testing"
-        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, torch_dtype=torch.float16).cuda()
+        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, torch_dtype=torch.bfloat16).cuda()
         model = model.eval()
         tokenizer = BloomTokenizerFast.from_pretrained(path_350m, padding_side="left")
 
