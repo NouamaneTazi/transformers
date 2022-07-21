@@ -725,14 +725,14 @@ class BloomModel(BloomPreTrainedModel):
                     self.config.hidden_size // self.config.n_head,
                     device=hidden_states.device if type(hidden_states) is torch.Tensor else None
                 )
-            ort_inputs = {
-                "hidden_states": numpy.ascontiguousarray(hidden_states.cpu().numpy()),
-                "layer_past": numpy.ascontiguousarray(layer_past.cpu().numpy()),
-                "attention_mask": numpy.ascontiguousarray(causal_mask.cpu().numpy()).astype(numpy.float16),
-                "alibi": numpy.ascontiguousarray(alibi.cpu().numpy()),
-            }
+            # ort_inputs = {
+            #     "hidden_states": numpy.ascontiguousarray(hidden_states.cpu().numpy()),
+            #     "layer_past": numpy.ascontiguousarray(layer_past.cpu().numpy()),
+            #     "attention_mask": numpy.ascontiguousarray(causal_mask.cpu().numpy()).astype(numpy.float16),
+            #     "alibi": numpy.ascontiguousarray(alibi.cpu().numpy()),
+            # }
 
-            outputs_cpu = session.run(None, ort_inputs)
+            # outputs_cpu = session.run(None, ort_inputs)
             outputs = inference_with_io_binding(session, hidden_states, layer_past, causal_mask, alibi, is_float16=True)
 
             outputs_0 = block(
