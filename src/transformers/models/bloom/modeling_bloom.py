@@ -573,7 +573,7 @@ class BloomModel(BloomPreTrainedModel):
         self.word_embeddings_layernorm = LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
 
         # Transformer blocks
-        self.h = nn.ModuleList([BloomBlock(config, layer_number=i) for i in range(config.num_hidden_layers)])
+        self.h = nn.ModuleList([BloomBlock(config, layer_number=i) for i in range(2)])
 
         # Final Layer Norm
         self.ln_f = LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
@@ -678,7 +678,7 @@ class BloomModel(BloomPreTrainedModel):
         alibi = build_alibi_tensor(attention_mask, self.n_head, hidden_states.dtype, hidden_states.device)
 
         causal_mask = self._prepare_attn_mask(attention_mask, input_shape, inputs_embeds, past_key_values_length)
-
+        print("HEEEEEEERE")
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
 
             if output_hidden_states:
@@ -700,10 +700,10 @@ class BloomModel(BloomPreTrainedModel):
             use_gpu = True
 
             model = block
-            device = torch.device("cuda:0" if use_gpu else "cpu")
-            model.eval().to(device)
+            device = next(block.named_parameters())[1].device
+            model.eval()
 
-            output = Path(f"./tmp/small-testing/bf16/h.{i}.onnx")
+            output = Path(f"./tmp/176b/fp16/h.{i}.onnx")
             output.parent.mkdir(parents=True, exist_ok=True)
             model_inputs = (hidden_states, layer_past.to(device), causal_mask.to(device), alibi.to(device), torch.tensor(use_cache).to(device))
             input_names = ["hidden_states", "layer_past", "attention_mask", "alibi", "use_cache"]

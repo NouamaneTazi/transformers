@@ -510,11 +510,9 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
             tokenizer.decode(greedy_output_without_pad[0, :-3], skip_special_tokens=True),
         )
         
-    @slow
-    @require_torch_gpu
     def test_simple_generation_176b(self):
         path_350m = "bigscience/bloom"
-        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, device_map="auto", local_files_only=False, cache_dir="/home/nicolas_huggingface_co/.cache/huggingface/transformers").cuda()
+        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, device_map="auto", torch_dtype=torch.float16, cache_dir="/home/nicolas/.cache/huggingface/transformers")
         model = model.eval()
         tokenizer = BloomTokenizerFast.from_pretrained(path_350m)
 
