@@ -701,7 +701,7 @@ class BloomModel(BloomPreTrainedModel):
             device = "cuda:15"
             block.eval().to(device)
 
-            output = Path(f"./tmp/176b/fp16/h.{i}/h.{i}.onnx")
+            output = Path(f"/mnt/disks/disk3/onnx/176b/fp16/h.{i}/h.{i}.onnx")
             print("Generating:", output)
             output.parent.mkdir(parents=True, exist_ok=True)
             model_inputs = (hidden_states.to(device), layer_past.to(device), causal_mask.to(device), alibi.to(device), torch.tensor(use_cache).to(device))
@@ -720,7 +720,7 @@ class BloomModel(BloomPreTrainedModel):
                 input_names=input_names,
                 output_names=onnx_outputs,
                 dynamic_axes=dynamic_axes,
-                do_constant_folding=False,  # removes None inputs from the graph
+                do_constant_folding=True,  # removes None inputs from the graph
                 opset_version=14,
                 verbose=True,
             )
