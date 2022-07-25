@@ -573,7 +573,7 @@ class BloomModel(BloomPreTrainedModel):
         self.word_embeddings_layernorm = LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
 
         # Transformer blocks
-        self.h = nn.ModuleList([BloomBlock(config, layer_number=i) for i in range(2)])
+        self.h = nn.ModuleList([BloomBlock(config, layer_number=i) for i in range(config.num_hidden_layers)])
 
         # Final Layer Norm
         self.ln_f = LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
@@ -678,7 +678,6 @@ class BloomModel(BloomPreTrainedModel):
         alibi = build_alibi_tensor(attention_mask, self.n_head, hidden_states.dtype, hidden_states.device)
 
         causal_mask = self._prepare_attn_mask(attention_mask, input_shape, inputs_embeds, past_key_values_length)
-        print("HEEEEEEERE")
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
 
             if output_hidden_states:
@@ -697,15 +696,15 @@ class BloomModel(BloomPreTrainedModel):
                 )
             from pathlib import Path
             from torch.onnx import export as onnx_export
-            use_gpu = True
 
-            model = block
-            device = next(block.named_parameters())[1].device
-            model.eval()
+            device_0 = next(block.named_parameters())[1].device
+            device = "cuda:15"
+            block.eval().to(device)
 
-            output = Path(f"./tmp/176b/fp16/h.{i}.onnx")
+            output = Path(f"./tmp/176b/fp16/h.{i}/h.{i}.onnx")
+            print("Generating:", output)
             output.parent.mkdir(parents=True, exist_ok=True)
-            model_inputs = (hidden_states, layer_past.to(device), causal_mask.to(device), alibi.to(device), torch.tensor(use_cache).to(device))
+            model_inputs = (hidden_states.to(device), layer_past.to(device), causal_mask.to(device), alibi.to(device), torch.tensor(use_cache).to(device))
             input_names = ["hidden_states", "layer_past", "attention_mask", "alibi", "use_cache"]
             onnx_outputs = ["outputs"]  # ["hidden_states", "present", "attentions"]
             dynamic_axes = {
@@ -715,7 +714,7 @@ class BloomModel(BloomPreTrainedModel):
                 "alibi": {0: "batch_size * n_head", 2: "max_seq_len"},
             }
             onnx_export(
-                model,
+                block,
                 model_inputs,
                 f=output.as_posix(),
                 input_names=input_names,
@@ -726,22 +725,23 @@ class BloomModel(BloomPreTrainedModel):
                 verbose=True,
             )
 
-            outputs = block(
-                hidden_states,
-                layer_past=layer_past,
-                attention_mask=causal_mask,
-                head_mask=head_mask[i],
-                use_cache=use_cache,
-                output_attentions=False,
-                alibi=alibi,
-            )
+            # outputs = block(
+            #     hidden_states,
+            #     layer_past=layer_past,
+            #     attention_mask=causal_mask,
+            #     head_mask=head_mask[i],
+            #     use_cache=use_cache,
+            #     output_attentions=False,
+            #     alibi=alibi,
+            # )
+            block.to(device_0)
 
-            hidden_states = outputs[0]
-            if use_cache is True:
-                presents = presents + (outputs[1],)
+            # hidden_states = outputs[0]
+            # if use_cache is True:
+            #     presents = presents + (outputs[1],)
 
-            if output_attentions:
-                all_self_attentions = all_self_attentions + (outputs[2 if use_cache else 1],)
+            # if output_attentions:
+            #     all_self_attentions = all_self_attentions + (outputs[2 if use_cache else 1],)
 
         # Add last hidden state
         hidden_states = self.ln_f(hidden_states)
