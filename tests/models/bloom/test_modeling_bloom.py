@@ -395,8 +395,8 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
         # >=760m + allow_fp16_reduced_precision_reduction = True  + torch.bmm  ==> PASS
         # >=760m + allow_fp16_reduced_precision_reduction = False  + torch.bmm  ==> PASS
 
-        path_350m = "bigscience/bloom-350m"
-        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True).cuda()
+        path_350m = "bigscience/bloom-760m"
+        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, torch_dtype=torch.float16).cuda()
         model = model.eval()
         tokenizer = BloomTokenizerFast.from_pretrained(path_350m)
 
@@ -434,10 +434,30 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
 
     @slow
     @require_torch_gpu
+    def test_export_fp16(self):
+        path_350m = "bigscience/bloom-350m"
+        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, torch_dtype=torch.float16).cuda()
+        model = model.eval()
+        tokenizer = BloomTokenizerFast.from_pretrained(path_350m)
+
+        input_sentence = "I enjoy walking with my cute dog"
+        # This output has been obtained using fp32 model on the huggingface DGX workstation - NVIDIA A100 GPU
+        EXPECTED_OUTPUT = (
+            "I enjoy walking with my cute dog, and I love to watch the kids play with the kids. I am a very "
+            "active person, and I enjoy working out, and I am a very active person. I am a very active person, and I"
+        )
+
+        input_ids = tokenizer.encode(input_sentence, return_tensors="pt")
+        greedy_output = model.generate(input_ids.cuda(), max_length=50)
+
+        self.assertEqual(tokenizer.decode(greedy_output[0], skip_special_tokens=True), EXPECTED_OUTPUT)
+
+    @slow
+    @require_torch_gpu
     def test_batch_generation_padd(self):
 
         path_350m = "bigscience/bloom-350m"
-        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True).cuda()
+        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, torch_dtype=torch.bfloat16).cuda()
         model = model.eval()
         tokenizer = BloomTokenizerFast.from_pretrained(path_350m, padding_side="left")
 
@@ -460,6 +480,59 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
             tokenizer.decode(greedy_output[-1, 3:], skip_special_tokens=True),
             tokenizer.decode(greedy_output_without_pad[0, :-3], skip_special_tokens=True),
         )
+        
+    def test_export_small_testing(self):
+
+        path_350m = "bigscience/bigscience-small-testing"
+        path_350m = "bigscience/bloom-350m"
+        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, torch_dtype=torch.float16).cuda()
+        model = model.eval()
+        tokenizer = BloomTokenizerFast.from_pretrained(path_350m, padding_side="left")
+
+        input_sentence = ["I enjoy walking with my cute dog", "Hello my name is"]
+        input_sentence_without_pad = "Hello my name is"
+
+        input_ids = tokenizer.batch_encode_plus(input_sentence, return_tensors="pt", padding=True)
+        input_ids_without_pad = tokenizer.encode(input_sentence_without_pad, return_tensors="pt")
+
+        greedy_output_without_pad = model.generate(input_ids_without_pad.cuda(), max_length=50, do_sample=False)
+        greedy_output = model.generate(
+            input_ids["input_ids"].cuda(), attention_mask=input_ids["attention_mask"], max_length=50, do_sample=False
+        )
+
+        # test token values
+        self.assertEqual(greedy_output[-1, 3:].tolist(), greedy_output_without_pad[0, :-3].tolist())
+
+        # test reconstructions
+        self.assertEqual(
+            tokenizer.decode(greedy_output[-1, 3:], skip_special_tokens=True),
+            tokenizer.decode(greedy_output_without_pad[0, :-3], skip_special_tokens=True),
+        )
+        
+    def test_simple_generation_176b(self):
+        path_350m = "bigscience/bloom"
+        # max_memory = {i: "30GB" for i in range(torch.cuda.device_count())}
+        # max_memory["cpu"] = "300GB"
+        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, device_map="auto", torch_dtype=torch.float16, cache_dir="/home/nicolas_huggingface_co/.cache/huggingface/transformers")
+        model = model.eval()
+        tokenizer = BloomTokenizerFast.from_pretrained(path_350m)
+        from accelerate.hooks import (
+            remove_hook_from_module,
+            remove_hook_from_submodules
+        )
+        remove_hook_from_submodules(model.transformer.h)
+
+        input_sentence = "I enjoy walking with my cute dog"
+        # This output has been obtained using fp32 model on the huggingface DGX workstation - NVIDIA A100 GPU
+        EXPECTED_OUTPUT = (
+            "I enjoy walking with my cute dog, and I love to watch the kids play with the kids. I am a very "
+            "active person, and I enjoy working out, and I am a very active person. I am a very active person, and I"
+        )
+
+        input_ids = tokenizer.encode(input_sentence, return_tensors="pt")
+        greedy_output = model.generate(input_ids.cuda(), max_length=50)
+
+        self.assertEqual(tokenizer.decode(greedy_output[0], skip_special_tokens=True), EXPECTED_OUTPUT)
 
     @slow
     def test_right_left_batched_input(self):
