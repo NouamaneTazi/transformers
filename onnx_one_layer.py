@@ -18,7 +18,7 @@ state_dict = torch.load(path_to_shard)
 # replace random weights with the ones from the shard
 _load_state_dict_into_model(block, state_dict, "h.0.")
 # cast block to device
-block = block.eval().cuda(0).to(model_dtype)
+block = block.eval().to(model_dtype).cuda(0)
 #%%
 # prepare dummy inputs
 batch_size = 2
@@ -37,6 +37,7 @@ alibi = torch.randn(batch_size * config.n_head, 1, seq_len).cuda(0).to(model_dty
 causal_mask = torch.ones(batch_size, 1, seq_len, seq_len).cuda(0).to(model_dtype) # batch_size, 1, seq_len + past_seq_len, seq_len
 
 #%%
+# test inference
 with torch.no_grad():
     outputs = block(
                     hidden_states,
@@ -52,10 +53,9 @@ outputs
 # export to ONNX
 from pathlib import Path
 from torch.onnx import export as onnx_export
-ONNX_SAVE_PATH = Path("test_onnx/h.0.onnx")
-output = Path(f"test_onnx/h.0.onnx")
-print("Generating:", output)
-output.parent.mkdir(parents=True, exist_ok=True)
+ONNX_SAVE_PATH = Path("tmp/test_onnx/h.0.onnx")
+print("Generating:", ONNX_SAVE_PATH)
+ONNX_SAVE_PATH.parent.mkdir(parents=True, exist_ok=True)
 device = next(block.named_parameters())[1].device
 model_inputs = (hidden_states.to(device), layer_past.to(device), causal_mask.to(device), alibi.to(device), torch.tensor(False).to(device))
 input_names = ["hidden_states", "layer_past", "attention_mask", "alibi", "use_cache"]
@@ -66,21 +66,23 @@ dynamic_axes = {
     "attention_mask": {0: "batch_size", 2: "seq_len", 3: "max_seq_len"},
     "alibi": {0: "batch_size * n_head", 2: "max_seq_len"},
 }
-# onnx_export(
-#     block,
-#     model_inputs,
-#     f=output.as_posix(),
-#     input_names=input_names,
-#     output_names=onnx_outputs,
-#     dynamic_axes=dynamic_axes,
-#     do_constant_folding=True,  # removes None inputs from the graph
-#     opset_version=14,
-#     verbose=True,
-# )
+onnx_export(
+    block,
+    model_inputs,
+    f=ONNX_SAVE_PATH.as_posix(),
+    input_names=input_names,
+    output_names=onnx_outputs,
+    dynamic_axes=dynamic_axes,
+    do_constant_folding=True,  # removes None inputs from the graph
+    opset_version=14,
+    verbose=True,
+)
 # %%
 
 # create ONNX session
 import onnxruntime
+import logging
+logging.basicConfig(level=logging.DEBUG)
 sess_options = onnxruntime.SessionOptions()
 # Set graph optimization level
 # sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
@@ -90,6 +92,11 @@ session = onnxruntime.InferenceSession(
                 ONNX_SAVE_PATH.as_posix(),
                 sess_options=sess_options,
                 providers=[
+                    ('TensorrtExecutionProvider', {
+                        'device_id': 0,
+                        # 'trt_max_workspace_size': 2147483648,
+                        'trt_fp16_enable': True,
+                    }),
                     (
                         "CUDAExecutionProvider",
                         {
