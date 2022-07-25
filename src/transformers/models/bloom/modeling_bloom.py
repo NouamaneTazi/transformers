@@ -578,25 +578,27 @@ class BloomModel(BloomPreTrainedModel):
         # Set graph optimization level
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         sess_options.enable_profiling = True
-        model_name = self.config._name_or_path.replace("bigscience/bloom-", "").replace('bigscience/bigscience-small-testing', "small-testing")
+        model_name = self.config._name_or_path.replace("bigscience/bloom-", "").replace('bigscience/bigscience-small-testing', "small-testing").replace("bigscience/bloom", "176b")
+        onnx_device_map = {0:11,1:11,2:11,3:12,4:12,5:12,6:13,7:13,8:13,9:14} # layer number -> device id
         self.sessions = [
             onnxruntime.InferenceSession(
-                f"/home/nouamane/projects/transformers/tmp/{model_name}/fp16/h.{i}.onnx",
+                f"tmp/{model_name}/fp16/h.{i}/h.{i}.onnx",
                 sess_options=sess_options,
                 providers=[
                     (
                         "CUDAExecutionProvider",
                         {
-                            "device_id": 0,
+                            "device_id": onnx_device_map[i],
                             # "enable_cuda_graph": '1'
                         },
                     ),
                     # "CPUExecutionProvider",
                 ],
             )
-            for i in range(config.num_hidden_layers)
+            for i in range(10)
         ]
-        self.h = nn.ModuleList([BloomBlock(config, layer_number=i) for i in range(config.num_hidden_layers)])
+        # self.h = nn.ModuleList([BloomBlock(config, layer_number=i) for i in range(config.num_hidden_layers)])
+        self.h = nn.ModuleList([BloomBlock(config, layer_number=i) for i in range(10)])
 
         # Final Layer Norm
         self.ln_f = LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
@@ -734,33 +736,33 @@ class BloomModel(BloomPreTrainedModel):
 
             # outputs_cpu = session.run(None, ort_inputs)
             outputs = inference_with_io_binding(session, hidden_states, layer_past, causal_mask, alibi, is_float16=True)
-
+            device = next(block.named_parameters())[1].device
             outputs_0 = block(
-                hidden_states,
-                layer_past=layer_past,
-                attention_mask=causal_mask,
+                hidden_states.to(device),
+                layer_past=layer_past.to(device),
+                attention_mask=causal_mask.to(device),
                 head_mask=head_mask[i],
                 use_cache=use_cache,
                 output_attentions=False,
-                alibi=alibi,
+                alibi=alibi.to(device),
             )
             print("----- Layer {} -----".format(i))
             try:
-                torch.testing.assert_close(outputs_0[0], outputs[0])
+                torch.testing.assert_close(outputs_0[0].to("cuda:5"), outputs[0].to("cuda:5"))
             except Exception as e:
                 print()
                 print("Pytorch vs ONNW w/IO Binding")
                 print(e)
-            try:
-                torch.testing.assert_close(outputs_0[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device))
-            except Exception as e:
-                print("Pytorch vs ONNX")
-                print(e)
-            try:
-                torch.testing.assert_close(outputs[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device))
-            except Exception as e:
-                print("ONNX w/IO Binding vs ONNX")
-                print(e)
+            # try:
+            #     torch.testing.assert_close(outputs_0[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device))
+            # except Exception as e:
+            #     print("Pytorch vs ONNX")
+            #     print(e)
+            # try:
+            #     torch.testing.assert_close(outputs[0], torch.tensor(outputs_cpu[0], device=outputs_0[0].device))
+            # except Exception as e:
+            #     print("ONNX w/IO Binding vs ONNX")
+            #     print(e)
 
             hidden_states = outputs[0]
             if use_cache is True:
