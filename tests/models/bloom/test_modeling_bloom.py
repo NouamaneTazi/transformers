@@ -520,7 +520,7 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
             remove_hook_from_module,
             remove_hook_from_submodules
         )
-        remove_hook_from_submodules(model.h)
+        remove_hook_from_submodules(model.transformer.h)
 
         input_sentence = "I enjoy walking with my cute dog"
         # This output has been obtained using fp32 model on the huggingface DGX workstation - NVIDIA A100 GPU
