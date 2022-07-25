@@ -481,12 +481,11 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
             tokenizer.decode(greedy_output_without_pad[0, :-3], skip_special_tokens=True),
         )
         
-    @slow
-    @require_torch_gpu
     def test_export_small_testing(self):
 
         path_350m = "bigscience/bigscience-small-testing"
-        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, torch_dtype=torch.bfloat16).cuda()
+        path_350m = "bigscience/bloom-350m"
+        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, torch_dtype=torch.float16).cuda()
         model = model.eval()
         tokenizer = BloomTokenizerFast.from_pretrained(path_350m, padding_side="left")
 
@@ -512,9 +511,16 @@ class BloomModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase)
         
     def test_simple_generation_176b(self):
         path_350m = "bigscience/bloom"
-        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, device_map="auto", torch_dtype=torch.float16, cache_dir="/home/nicolas/.cache/huggingface/transformers")
+        # max_memory = {i: "30GB" for i in range(torch.cuda.device_count())}
+        # max_memory["cpu"] = "300GB"
+        model = BloomForCausalLM.from_pretrained(path_350m, use_cache=True, device_map="auto", torch_dtype=torch.float16, cache_dir="/home/nicolas_huggingface_co/.cache/huggingface/transformers")
         model = model.eval()
         tokenizer = BloomTokenizerFast.from_pretrained(path_350m)
+        from accelerate.hooks import (
+            remove_hook_from_module,
+            remove_hook_from_submodules
+        )
+        remove_hook_from_submodules(model.h)
 
         input_sentence = "I enjoy walking with my cute dog"
         # This output has been obtained using fp32 model on the huggingface DGX workstation - NVIDIA A100 GPU
