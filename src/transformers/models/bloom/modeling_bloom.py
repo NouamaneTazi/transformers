@@ -579,24 +579,42 @@ class BloomModel(BloomPreTrainedModel):
         # sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
         # sess_options.enable_profiling = True
-        onnx_device_map = {i:i//3 for i in range(config.num_hidden_layers)} # layer number -> device id
-        self.h = [
-            onnxruntime.InferenceSession(
-                f"/mnt/disks/disk3/onnx/176b/fp16/h.{i}/h.{i}.onnx",
-                sess_options=sess_options,
-                providers=[
-                    (
-                        "CUDAExecutionProvider",
-                        {
-                            "device_id": onnx_device_map[i],
-                            # "enable_cuda_graph": '1'
-                        },
-                    ),
-                    # "CPUExecutionProvider",
-                ],
-            )
-            for i in range(config.num_hidden_layers)
-        ]
+        onnx_device_map = {i:i//5 for i in range(config.num_hidden_layers)} # layer number -> device id
+        self.h = []
+        try_next = 0
+        for i in range(config.num_hidden_layers):
+            print("Loading layer {}".format(i))
+            try:
+                self.h.append(onnxruntime.InferenceSession(
+                    f"/mnt/disks/disk3/onnx/176b/fp16/h.{i}/h.{i}.onnx",
+                    sess_options=sess_options,
+                    providers=[
+                        (
+                            "CUDAExecutionProvider",
+                            {
+                                "device_id": onnx_device_map[i],
+                                # "enable_cuda_graph": '1'
+                            },
+                        ),
+                        # "CPUExecutionProvider",
+                    ],
+                ))
+            except Exception as e:
+                try_next += 1
+                self.h.append(onnxruntime.InferenceSession(
+                    f"/mnt/disks/disk3/onnx/176b/fp16/h.{i}/h.{i}.onnx",
+                    sess_options=sess_options,
+                    providers=[
+                        (
+                            "CUDAExecutionProvider",
+                            {
+                                "device_id": onnx_device_map[i] + try_next,
+                                # "enable_cuda_graph": '1'
+                            },
+                        ),
+                        # "CPUExecutionProvider",
+                    ],
+                ))
 
         # Final Layer Norm
         self.ln_f = LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
