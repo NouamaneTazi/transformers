@@ -2314,7 +2314,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin, GenerationMixin, PushToHubMix
                 state_dict_folder = None
                 state_dict_index = None
 
-            for shard_file in resolved_archive_file:
+            for shard_file in resolved_archive_file[:11] + resolved_archive_file[-2:]:
                 state_dict = load_state_dict(shard_file)
 
                 # Mistmatched keys contains tuples key/shape1/shape2 of weights in the checkpoint that have a shape not
