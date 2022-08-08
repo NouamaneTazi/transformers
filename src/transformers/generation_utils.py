@@ -1670,6 +1670,38 @@ class GenerationMixin:
         cur_len = input_ids.shape[-1]
 
         this_peer_finished = False  # used by synced_gpus only
+
+        # warmup
+        s = torch.cuda.Stream()
+        s.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(s):
+            for i in range(3):
+                with torch.no_grad():
+                    model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
+
+                    # forward pass to get next token
+                    outputs = self(
+                        **model_inputs,
+                        return_dict=True,
+                        output_attentions=output_attentions,
+                        output_hidden_states=output_hidden_states,
+                    )
+        torch.cuda.current_stream().wait_stream(s)
+
+        # capture
+        g = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(g):
+            with torch.no_grad():
+                model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
+
+                # forward pass to get next token
+                outputs = self(
+                    **model_inputs,
+                    return_dict=True,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                )
+            
         while True:
 
             if synced_gpus:
