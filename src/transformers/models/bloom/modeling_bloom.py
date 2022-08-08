@@ -599,6 +599,8 @@ class BloomModel(BloomPreTrainedModel):
 
         self.gradient_checkpointing = False
 
+        self.g = None # CUDA graph
+
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -713,50 +715,39 @@ class BloomModel(BloomPreTrainedModel):
             past_key_values_length=past_key_values_length,
         )
 
-        for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
+        # if no cuda graph was created we create it
+        if self.g is None:
+            self.graph_inputs = (hidden_states.contiguous(), alibi.contiguous(), causal_mask.contiguous())
 
-            if output_hidden_states:
-                all_hidden_states = all_hidden_states + (hidden_states,)
+            # use_cache = False // We don't use layer_past nor head_mask
+            # warmup
+            hs, alibi, causal_mask = self.graph_inputs
+            s = torch.cuda.Stream()
+            s.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(s):
+                with torch.no_grad():
+                    for block in self.h:
+                        outputs = block(hs, alibi, causal_mask)
+                        hs = outputs[0]
+            torch.cuda.current_stream().wait_stream(s)
+            self.graph_outputs = (outputs[0],)
 
-            if self.gradient_checkpointing and self.training:
+            # capture
+            self.g = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(self.g):
+                with torch.no_grad():
+                    for block in self.h:
+                        outputs = block(hs, alibi, causal_mask)
+                        hs = outputs[0]
+                    self.graph_outputs[0].copy_(hs)
 
-                if use_cache:
-                    logger.warning(
-                        "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-                    )
-                    use_cache = False
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        # None for past_key_value
-                        return module(*inputs, use_cache=use_cache, output_attentions=output_attentions)
-
-                    return custom_forward
-
-                outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    hidden_states,
-                    alibi,
-                    causal_mask,
-                    head_mask[i],
-                )
-            else:
-                outputs = block(
-                    hidden_states,
-                    layer_past=layer_past,
-                    attention_mask=causal_mask,
-                    head_mask=head_mask[i],
-                    use_cache=use_cache,
-                    output_attentions=output_attentions,
-                    alibi=alibi,
-                )
-
-            hidden_states = outputs[0]
-            if use_cache is True:
-                presents = presents + (outputs[1],)
-
-            if output_attentions:
-                all_self_attentions = all_self_attentions + (outputs[2 if use_cache else 1],)
+        # Fills the graph's input memory with new data to compute on
+        # graph takes self.hs, alibi, causal_mask)
+        self.graph_inputs[0].copy_(hidden_states)
+        self.graph_inputs[1].copy_(alibi)
+        self.graph_inputs[2].copy_(causal_mask)
+        self.g.replay()
+        hidden_states = self.graph_outputs[0]
 
         # Add last hidden state
         hidden_states = self.ln_f(hidden_states)
