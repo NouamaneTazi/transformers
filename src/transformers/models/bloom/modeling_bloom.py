@@ -729,7 +729,9 @@ class BloomModel(BloomPreTrainedModel):
         else:
             attention_mask = attention_mask.to(hidden_states.device)
 
-        alibi = build_alibi_tensor(attention_mask, self.num_heads)
+        # (batch_size * num_heads, 1, max_seq_len)
+        # alibi = torch.rand((batch_size * self.num_heads, 1, seq_length_with_past), dtype=hidden_states.dtype)
+        alibi = torch.rand((1, batch_size * self.num_heads, seq_length_with_past), device=hidden_states.device, dtype=hidden_states.dtype)
 
         if hasattr(self, "tp_rank"):
             assert self.num_heads % self.tp_world_size == 0

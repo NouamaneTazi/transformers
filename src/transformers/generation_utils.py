@@ -1741,7 +1741,8 @@ class GenerationMixin:
                 unfinished_sequences &= next_tokens != eos_token_id
 
             # stop when each sentence is finished, or if we exceed the maximum length
-            if not (torch.any(unfinished_sequences) and not stopping_criteria(input_ids, scores)):
+            # if not (torch.any(unfinished_sequences) and not stopping_criteria(input_ids, scores)):
+            if stopping_criteria(input_ids, scores):
                 if not synced_gpus:
                     break
                 else:
