@@ -65,7 +65,7 @@ class TensorParallelRowLinear(nn.Linear):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         # Note the the unsharded equivalent requires us to sum over bias instead of averaging.
         out = super().forward(input)
-        torch.distributed.all_reduce(out, group=self.process_group)
+        torch.distributed.all_reduce(out, group=self.process_group, async_op=True)
 
         # ### DEBUG @thomasw21:: Check that shard model output the same as the non sharded version
         # sharded_out = out
@@ -131,5 +131,5 @@ class TensorParallelEmbedding(nn.Embedding):
         input[input_mask] = 0
         out = super().forward(input)
         out[input_mask] = 0.0
-        torch.distributed.all_reduce(out, group=self.process_group)
+        torch.distributed.all_reduce(out, group=self.process_group, async_op=True)
         return out
